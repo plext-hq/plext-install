@@ -79,7 +79,7 @@ else
 fi
 
 say
-say "Installing plext $VERSION for $OS/$ARCH…"
+say "Installing plext ${VERSION} for ${OS}/${ARCH}..."
 say
 
 ARCHIVE="plext-${OS}-${ARCH}.tar.gz"
