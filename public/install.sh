@@ -155,7 +155,7 @@ say
 ok "plext $VERSION installed"
 say
 info "Next steps:"
-info "  1. Restart your shell (or run: export PATH=\"$INSTALL_DIR:\$PATH\")"
+info "  1. Open a new terminal so the PATH change takes effect"
 info "  2. Run: plext --help"
 info "  3. Get started: plext setup"
 say
