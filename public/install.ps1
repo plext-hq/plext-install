@@ -3,10 +3,10 @@
 #   irm https://get.plext.com/install.ps1 | iex
 #
 # Environment overrides (all optional):
-#   $env:PLEXT_VERSION   pin to a specific tag (e.g. v0.1.0). Defaults to latest.
-#   $env:PLEXT_INSTALL   install directory. Defaults to $env:LOCALAPPDATA\Plext\bin.
-#   $env:PLEXT_DL_BASE   download base URL. Defaults to https://dl.plext.com.
-#   $env:PLEXT_NO_PATH   skip User PATH modification.
+#   $env:PLEXT_VERSION       pin to a specific tag (e.g. v0.1.0). Defaults to latest.
+#   $env:PLEXT_INSTALL       install directory. Defaults to $env:LOCALAPPDATA\Plext\bin.
+#   $env:PLEXT_RELEASE_REPO  GitHub repo hosting releases. Defaults to plext-hq/plext-install.
+#   $env:PLEXT_NO_PATH       skip User PATH modification.
 #
 # This script is public and auditable. Read it before piping into iex.
 
@@ -23,16 +23,24 @@ if ($arch -ne 'X64') {
     Fail "Plext currently ships Windows builds for x64 only. Detected: $arch"
 }
 
-$DlBase     = if ($env:PLEXT_DL_BASE)   { $env:PLEXT_DL_BASE }   else { 'https://dl.plext.com' }
-$InstallDir = if ($env:PLEXT_INSTALL)   { $env:PLEXT_INSTALL }   else { Join-Path $env:LOCALAPPDATA 'Plext\bin' }
+$ReleaseRepo = if ($env:PLEXT_RELEASE_REPO) { $env:PLEXT_RELEASE_REPO } else { 'plext-hq/plext-install' }
+$ReleaseBase = "https://github.com/$ReleaseRepo/releases"
+$InstallDir  = if ($env:PLEXT_INSTALL) { $env:PLEXT_INSTALL } else { Join-Path $env:LOCALAPPDATA 'Plext\bin' }
 
-# Resolve version.
+# Resolve version by following the /releases/latest redirect to /tag/<version>.
+# This skips the 60-req/hour unauthenticated API rate limit.
 $Version = $env:PLEXT_VERSION
 if (-not $Version) {
     try {
-        $Version = (Invoke-WebRequest -UseBasicParsing -Uri "$DlBase/latest/version.txt").Content.Trim()
+        $Response = Invoke-WebRequest -UseBasicParsing -Uri "$ReleaseBase/latest" -MaximumRedirection 5
+        $FinalUri = $Response.BaseResponse.ResponseUri.ToString()
+        if ($FinalUri -match '/tag/([^/]+)$') {
+            $Version = $Matches[1]
+        } else {
+            Fail "Could not parse latest release from $FinalUri"
+        }
     } catch {
-        Fail "Could not resolve latest version from $DlBase/latest/version.txt"
+        Fail "Could not resolve latest release from $ReleaseBase/latest"
     }
 }
 
@@ -41,8 +49,8 @@ Write-Host "Installing plext $Version for windows/amd64..."
 Write-Host
 
 $Archive       = "plext-windows-amd64.zip"
-$ArchiveUrl    = "$DlBase/$Version/$Archive"
-$ChecksumsUrl  = "$DlBase/$Version/checksums.txt"
+$ArchiveUrl    = "$ReleaseBase/download/$Version/$Archive"
+$ChecksumsUrl  = "$ReleaseBase/download/$Version/checksums.txt"
 
 $Tmp = Join-Path $env:TEMP ([System.IO.Path]::GetRandomFileName())
 New-Item -ItemType Directory -Path $Tmp | Out-Null

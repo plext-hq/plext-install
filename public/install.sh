@@ -4,16 +4,17 @@
 #   curl -fsSL https://get.plext.com/install.sh | sh
 #
 # Environment overrides (all optional):
-#   PLEXT_VERSION   pin to a specific tag (e.g. v0.1.0). Defaults to latest.
-#   PLEXT_INSTALL   install directory. Defaults to ~/.plext/bin.
-#   PLEXT_DL_BASE   download base URL. Defaults to https://dl.plext.com.
-#   PLEXT_NO_PATH   if set, skip rc file patching.
+#   PLEXT_VERSION       pin to a specific tag (e.g. v0.1.0). Defaults to latest.
+#   PLEXT_INSTALL       install directory. Defaults to ~/.plext/bin.
+#   PLEXT_RELEASE_REPO  GitHub repo hosting releases. Defaults to plext-hq/plext-install.
+#   PLEXT_NO_PATH       if set, skip rc file patching.
 #
 # This script is public and auditable. Read it before piping into sh.
 
 set -eu
 
-DL_BASE="${PLEXT_DL_BASE:-https://dl.plext.com}"
+RELEASE_REPO="${PLEXT_RELEASE_REPO:-plext-hq/plext-install}"
+RELEASE_BASE="https://github.com/${RELEASE_REPO}/releases"
 INSTALL_DIR="${PLEXT_INSTALL:-$HOME/.plext/bin}"
 BIN_NAME="plext"
 
@@ -58,12 +59,22 @@ case "$UNAME_M" in
 esac
 
 # Resolve version.
+#
+# We follow the /releases/latest redirect instead of hitting the GitHub
+# API directly — avoids the 60-req/hour unauthenticated API rate limit.
+# curl's %{url_effective} captures the post-redirect URL, which looks
+# like https://github.com/<repo>/releases/tag/v0.1.0.
 if [ -n "${PLEXT_VERSION:-}" ]; then
   VERSION="$PLEXT_VERSION"
 else
-  VERSION="$($DOWNLOAD "$DL_BASE/latest/version.txt" 2>/dev/null | tr -d ' \r\n')"
+  if command -v curl >/dev/null 2>&1; then
+    FINAL_URL="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$RELEASE_BASE/latest" 2>/dev/null)"
+  else
+    FINAL_URL="$(wget --max-redirect=5 -qSO /dev/null "$RELEASE_BASE/latest" 2>&1 | sed -n 's|.*Location: \(.*\)$|\1|p' | tail -1)"
+  fi
+  VERSION="$(printf '%s' "$FINAL_URL" | sed -n 's|.*/tag/\([^/]*\).*|\1|p' | tr -d ' \r\n')"
   if [ -z "$VERSION" ]; then
-    err "could not resolve latest version from $DL_BASE/latest/version.txt"
+    err "could not resolve latest release from $RELEASE_BASE/latest"
   fi
 fi
 
@@ -72,8 +83,8 @@ say "Installing plext $VERSION for $OS/$ARCH…"
 say
 
 ARCHIVE="plext-${OS}-${ARCH}.tar.gz"
-ARCHIVE_URL="$DL_BASE/$VERSION/$ARCHIVE"
-CHECKSUMS_URL="$DL_BASE/$VERSION/checksums.txt"
+ARCHIVE_URL="$RELEASE_BASE/download/$VERSION/$ARCHIVE"
+CHECKSUMS_URL="$RELEASE_BASE/download/$VERSION/checksums.txt"
 
 TMP="$(mktemp -d 2>/dev/null || mktemp -d -t plext)"
 trap 'rm -rf "$TMP"' EXIT INT TERM
